@@ -1,0 +1,1249 @@
+<input id="input1" />
+<button onclick="mainfunction()">Analisis</button>
+<span id="output1"></span>
+<p id="output2"></p>
+<canvas id="canvas1" width="900" height="400"></canvas>
+
+    <script>
+        function mainfunction() {
+            const hasil = prosesawal(document.getElementById("input1").value);
+
+            const d = prosesawal(document.getElementById("input1").value, true);
+
+            document.getElementById("output1").innerText =
+                `\nNama : ${hasil.text} \n Massa Relative : ${d.mr}` || "Error";
+            const ctx = document.getElementById("canvas1").getContext("2d");
+
+            ctx.clearRect(0, 0, 900, 450);
+            if (hasil.canvas) ctx.drawImage(hasil.canvas, 0, 0);
+
+            document.getElementById("output2").innerText = "\n Ikatan parsial : " + JSON.stringify(hasil.bonds || {});
+        }
+
+        function prosesawal(input, skip = false) {
+            
+            const prosesBesar = (input) => {
+// Digunakan untuk mencari apakah senyawa yang dimasukkan adalah senyawa organik alias hidrokarbon atau tidak
+//Jika tidak langsung lempar ke prosesan2
+                const teks = input.trim();
+                const polaStruktur = /C(?![a-z])[H\d]*|(?<=[CH\d])[\(\)=#]/g;
+                const matchesStruktur = teks.match(polaStruktur);
+                const polaSimbol = /^C\d*H\d+([A-Z][a-z]?)?(\d*)?$/i;
+                const polaNama = /ana$|ena$|una$|metil|etil|propil|butil|pent/i;
+                let tipeInput = "tidak dikenali";
+                if (polaSimbol.test(teks)) tipeInput = "simbol";
+                else if (polaNama.test(teks)) {
+                    if (input.toLowerCase() === "metana") {
+                  const r = prosesan2("CH4");
+//metana walaupun senyawa organik, tapi dilempar ke prosesan2 karena jika tidak, nanti visual nya hanya satu bulatan
+
+                        return { text: r.nama, canvas: r.visual, bonds: hitungIkatan(r._atoms || []) };
+                    } else {
+                        tipeInput = "nama";
+                    }
+                } else if (matchesStruktur && matchesStruktur.length > 1) tipeInput = "struktur";
+                else tipeInput = "simbol";
+                if (tipeInput === "simbol") {
+                    const regex = /^C(\d*)H(\d*)([A-Z][a-z]?)?(\d*)$/i;
+                    const m = teks.match(regex);
+                    if (!m || teks.toUpperCase() === "CH4") {
+                        const r = prosesan2(input);
+                        return { text: r.nama, canvas: r.visual, bonds: r._bonds || {} };
+                    }
+                    const offCanvas = document.createElement("canvas");
+                    offCanvas.width = 800;
+                    offCanvas.height = 250;
+                    const ctxH = offCanvas.getContext("2d");
+                    let n = parseInt(m[1] || 1);
+                    let hIn = parseInt(m[2] || 0);
+                    let halo = (m[3] || "").toUpperCase();
+                    let haloCount = parseInt(m[4] || 1);
+                    let pre = ["", "Met", "Et", "Prop", "But", "Pent", "Heks", "Hept", "Okt", "Non", "Dek"]; //Awalan nama senhawa
+                    let base = n <= 10 ? pre[n].toLowerCase() : "karbon-" + n;
+                    let hasilNama = "",
+                        tipeB = 1,
+                        isAlkil = false;
+                    if (halo === "OH") hasilNama = pre[n] + "anol"; //senyawa alkohol
+                    else if (["CL", "F", "BR", "I"].includes(halo)) {
+                        const hMap = { CL: "kloro", F: "fluoro", BR: "bromo", I: "iodo" };
+//senyawa haloalkana
+                        const pfx = haloCount > 1 ? (haloCount === 2 ? "di" : haloCount === 3 ? "tri" : "tetra") : "";
+                        hasilNama = pfx + hMap[halo] + base + "ana";
+                    } else {
+                        if (hIn === 2 * n + 2) {
+                            hasilNama = pre[n] + "ana";
+                        } else if (hIn === 2 * n + 1) {
+                            hasilNama = pre[n] + "il";
+                            isAlkil = true;
+                        } else if (hIn === 2 * n) {
+                            hasilNama = pre[n] + "ena";
+                            tipeB = 2;
+                        } else if (hIn === 2 * n - 2) {
+                            hasilNama = pre[n] + "una";
+                            tipeB = 3;
+                        } else hasilNama = "Senyawa Karbon";
+                    }
+                    let startX = 80,
+                        yH = 125,
+                        gapH = 110,
+                        radiusH = 35,
+                        bondIdx = Math.floor(n / 2) - 1;
+                    for (let i = 0; i < n; i++) {
+                        let x = startX + i * gapH;
+                        let tKiri = i > 0 ? (i - 1 === bondIdx ? tipeB : 1) : 0;
+                        let tKanan = i < n - 1 ? (i === bondIdx ? tipeB : 1) : 0;
+                        let tEkstra = i === n - 1 && (halo === "OH" || isAlkil) ? 1 : 0;
+                        let hSub = i === n - 1 && halo !== "" && halo !== "OH" ? haloCount : 0;
+                        let jmlH = 4 - (tKiri + tKanan + tEkstra + hSub);
+                        if (jmlH < 0) jmlH = 0;
+                        let txtCH = "C" + (jmlH > 0 ? "H" + (jmlH > 1 ? jmlH : "") : "");
+                        if (i === n - 1 && halo !== "" && halo !== "OH")
+                            txtCH +=
+                                halo.charAt(0) +
+                                (halo.length > 1 ? halo.charAt(1).toLowerCase() : "") +
+                                (haloCount > 1 ? haloCount : "");
+                        ctxH.lineWidth = 2;
+                        ctxH.strokeStyle = "#333";
+                        if (i < n - 1) {
+                            let bt = i === bondIdx ? tipeB : 1;
+                            if (bt === 1) {
+                                ctxH.beginPath();
+                                ctxH.moveTo(x + radiusH, yH);
+                                ctxH.lineTo(x + gapH - radiusH, yH);
+                                ctxH.stroke();
+                            } else if (bt === 2) {
+                                ctxH.beginPath();
+                                ctxH.moveTo(x + radiusH, yH - 4);
+                                ctxH.lineTo(x + gapH - radiusH, yH - 4);
+                                ctxH.stroke();
+                                ctxH.beginPath();
+                                ctxH.moveTo(x + radiusH, yH + 4);
+                                ctxH.lineTo(x + gapH - radiusH, yH + 4);
+                                ctxH.stroke();
+                            } else if (bt === 3) {
+                                ctxH.beginPath();
+                                ctxH.moveTo(x + radiusH, yH - 7);
+                                ctxH.lineTo(x + gapH - radiusH, yH - 7);
+                                ctxH.stroke();
+                                ctxH.beginPath();
+                                ctxH.moveTo(x + radiusH, yH);
+                                ctxH.lineTo(x + gapH - radiusH, yH);
+                                ctxH.stroke();
+                                ctxH.beginPath();
+                                ctxH.moveTo(x + radiusH, yH + 7);
+                                ctxH.lineTo(x + gapH - radiusH, yH + 7);
+                                ctxH.stroke();
+                            }
+                        }
+                        if (i === n - 1 && (halo === "OH" || isAlkil)) {
+                            ctxH.beginPath();
+                            ctxH.moveTo(x + radiusH, yH);
+                            ctxH.lineTo(x + radiusH + 40, yH);
+                            ctxH.stroke();
+                        }
+                        ctxH.beginPath();
+                        ctxH.arc(x, yH, radiusH, 0, Math.PI * 2);
+                        ctxH.fillStyle = "#58a6ff";
+                        ctxH.fill();
+                        ctxH.stroke();
+                        ctxH.fillStyle = "white";
+                        ctxH.font = "bold 15px Arial";
+                        ctxH.textAlign = "center";
+                        ctxH.textBaseline = "middle";
+                        ctxH.fillText(txtCH, x, yH);
+                    }
+                    if (halo === "OH") {
+                        let lx = startX + n * gapH;
+                        ctxH.beginPath();
+                        ctxH.arc(lx - (gapH - 40 - radiusH), yH, radiusH, 0, Math.PI * 2);
+                        ctxH.fillStyle = "#aff5b4";
+                        ctxH.fill();
+                        ctxH.stroke();
+                        ctxH.fillStyle = "black";
+                        ctxH.fillText("OH", lx - (gapH - 40 - radiusH), yH);
+                    }
+                    const bonds = hitungIkatan({ n, typeE: tipeB, posF: bondIdx + 1, branches: [], halo, haloCount });
+                    if (hIn > 0 && !halo) {
+                        delete bonds["C-H"];
+                        bonds["C-H"] = hIn;
+                    }
+                    return { text: hasilNama.charAt(0).toUpperCase() + hasilNama.slice(1), canvas: offCanvas, bonds };
+                }
+                let nodes = [],
+                    longestPath = [];
+                let kodeIntern = "";
+                if (tipeInput === "nama") {
+                    let n = teks.toLowerCase();
+                    const awl = { met: 1, et: 2, prop: 3, but: 4, pent: 5, heks: 6, hept: 7, okt: 8, non: 9, dek: 10 };
+                    let mMain = n.match(/(met|et|prop|but|pent|heks|hept|okt|non|dek)(ana|ena|una)$/);
+                    if (!mMain) return { text: "Format Nama Tidak Valid", bonds: {} };
+                    let nUtama = awl[mMain[1]],
+                        jenis = mMain[2],
+                        sRk = jenis === "ena" ? "=" : jenis === "una" ? "~" : "";
+                    let pRkM = n.match(/(\d+)-(?:met|et|prop|but|pent|heks|hept|okt|non|dek)(?:ena|una)/);
+                    let pRk = pRkM ? pRkM[1] : "1",
+                        brs = [];
+                    let bReg = /([\d,]+)-(?:di|tri|tetra)?(metil|etil|propil|butil)/g,
+                        mB;
+                    while ((mB = bReg.exec(n)) !== null) {
+                        let pArr = mB[1].split(","),
+                            sz = mB[2] === "metil" ? 1 : mB[2] === "etil" ? 2 : mB[2] === "propil" ? 3 : 4;
+                        pArr.forEach((p) => brs.push({ pos: parseInt(p), size: sz }));
+                    }
+                    brs.sort((a, b) => a.pos - b.pos);
+                    kodeIntern =
+                        brs.map((b) => `${b.pos}(${b.size})`).join(",") +
+                        (brs.length ? "-" : "") +
+                        nUtama +
+                        (sRk ? sRk + pRk : "");
+                } else {
+                    try {
+                        const _tok = (s) => {
+                            const t = [];
+                            let i = 0;
+                            while (i < s.length) {
+                                const c = s[i];
+                                if (c === "(") {
+                                    t.push({ y: "O" });
+                                    i++;
+                                } else if (c === ")") {
+                                    i++;
+                                    let m = 1;
+                                    if (i < s.length && /\d/.test(s[i])) {
+                                        m = parseInt(s[i]);
+                                        i++;
+                                    }
+                                    t.push({ y: "C", m });
+                                } else if (c === "=" || c === "~" || c === "≡" || c === "#") {
+                                    t.push({ y: "B", c });
+                                    i++;
+                                } else if (c === "C" && (i + 1 >= s.length || !/[adeilmnorstuy]/.test(s[i + 1]))) {
+                                    let j = i + 1;
+                                    if (j < s.length && s[j] === "H") {
+                                        j++;
+                                        while (j < s.length && /\d/.test(s[j])) j++;
+                                    }
+                                    t.push({ y: "A" });
+                                    i = j;
+                                } else i++;
+                            }
+                            return t;
+                        };
+                        const _reorder = (t) => {
+                            let d = 0,
+                                fc = -1;
+                            for (let i = 0; i < t.length; i++) {
+                                if (t[i].y === "O") d++;
+                                else if (t[i].y === "C") d--;
+                                else if (t[i].y === "A" && d === 0) {
+                                    fc = i;
+                                    break;
+                                }
+                            }
+                            if (fc <= 0) return t;
+                            let d2 = 0,
+                                hasLG = false;
+                            for (let i = 0; i < fc; i++) {
+                                if (t[i].y === "O" && d2 === 0) {
+                                    hasLG = true;
+                                    break;
+                                }
+                                if (t[i].y === "O") d2++;
+                                if (t[i].y === "C") d2--;
+                            }
+                            if (!hasLG) return t;
+                            return [t[fc], ...t.slice(0, fc), ...t.slice(fc + 1)];
+                        };
+                        const _build = (t) => {
+                            const ns = [];
+                            function an() {
+                                const id = ns.length;
+                                ns.push({ id, bonds: [], bondOrders: {} });
+                                return id;
+                            }
+                            function lk(a, b, o = 1) {
+                                if (a == null || b == null || a === b) return;
+                                if (!ns[a].bonds.includes(b)) ns[a].bonds.push(b);
+                                if (!ns[b].bonds.includes(a)) ns[b].bonds.push(a);
+                                ns[a].bondOrders[b] = o;
+                                ns[b].bondOrders[a] = o;
+                            }
+                            function ps(toks, prev, bo) {
+                                let lp = prev,
+                                    nb = bo || 1,
+                                    i = 0;
+                                while (i < toks.length) {
+                                    const k = toks[i];
+                                    if (k.y === "A") {
+                                        const id = an();
+                                        lk(lp, id, nb);
+                                        nb = 1;
+                                        lp = id;
+                                        i++;
+                                    } else if (k.y === "B") {
+                                        nb = k.c === "=" ? 2 : 3;
+                                        i++;
+                                    } else if (k.y === "O") {
+                                        let d = 1,
+                                            j = i + 1;
+                                        while (j < toks.length && d > 0) {
+                                            if (toks[j].y === "O") d++;
+                                            else if (toks[j].y === "C") d--;
+                                            j++;
+                                        }
+                                        const ci = j - 1,
+                                            m = toks[ci].m,
+                                            inn = toks.slice(i + 1, ci);
+                                        for (let k2 = 0; k2 < m; k2++) ps(inn, lp, 1);
+                                        i = ci + 1;
+                                    } else i++;
+                                }
+                                return lp;
+                            }
+                            ps(_reorder(t), null, 1);
+                            return ns;
+                        };
+                        const nodes = _build(_tok(teks));
+                        const findL = (c, v) => {
+                            v.add(c);
+                            let p = [c];
+                            for (const n of nodes[c].bonds) {
+                                if (!v.has(n)) {
+                                    const sp = findL(n, new Set(v));
+                                    if (sp.length + 1 > p.length) p = [c, ...sp];
+                                }
+                            }
+                            return p;
+                        };
+                        nodes.forEach((_, i) => {
+                            if (nodes[i].bonds.length === 1) {
+                                const p = findL(i, new Set());
+                                if (p.length > longestPath.length) longestPath = p;
+                            }
+                        });
+                        if (!longestPath.length)
+                            nodes.forEach((_, i) => {
+                                const p = findL(i, new Set());
+                                if (p.length > longestPath.length) longestPath = p;
+                            });
+                        kodeIntern = "__graph__";
+                        const canvas2 = document.createElement("canvas");
+                        canvas2.width = 1000;
+                        canvas2.height = 800;
+                        const ctx2 = canvas2.getContext("2d");
+                        const analyze2 = (path) => {
+                            let brs = [],
+                                dbP = Infinity;
+                            for (let i = 0; i < path.length - 1; i++) {
+                                if (nodes[path[i]].bondOrders[path[i + 1]] > 1) dbP = Math.min(dbP, i + 1);
+                                nodes[path[i]].bonds.forEach((nbr) => {
+                                    if (!path.includes(nbr)) {
+                                        let sz = 0,
+                                            st = [nbr],
+                                            vS = new Set(path);
+                                        while (st.length) {
+                                            const c = st.pop();
+                                            vS.add(c);
+                                            sz++;
+                                            nodes[c].bonds.forEach((bn) => {
+                                                if (!vS.has(bn)) st.push(bn);
+                                            });
+                                        }
+                                        brs.push({ pos: i + 1, len: sz });
+                                    }
+                                });
+                            }
+                            return { dbPos: dbP, brs: brs.sort((a, b) => a.pos - b.pos) };
+                        };
+                        const f2 = analyze2(longestPath),
+                            b2 = analyze2([...longestPath].reverse());
+                        let finalD2, finalP2;
+                        if (f2.dbPos !== b2.dbPos) {
+                            finalD2 = f2.dbPos < b2.dbPos ? f2 : b2;
+                            finalP2 = f2.dbPos < b2.dbPos ? longestPath : [...longestPath].reverse();
+                        } else {
+                            const fS = JSON.stringify(f2.brs.map((x) => x.pos)),
+                                bS = JSON.stringify(b2.brs.map((x) => x.pos));
+                            finalD2 = fS <= bS ? f2 : b2;
+                            finalP2 = fS <= bS ? longestPath : [...longestPath].reverse();
+                        }
+                        const preI2 = ["", "met", "et", "prop", "but", "pent", "heks", "hept", "okt", "non", "dek"]; //awalan nama senyawa hidrokarbon dengan imbuhan di, tri, di awal untuk membedah rumus struktur
+                        const gr2 = {};
+                        finalD2.brs.forEach((d) => {
+                            const n = (d.len <= 10 ? preI2[d.len] : "C" + d.len) + "il";
+                            gr2[n] = gr2[n] || [];
+                            gr2[n].push(d.pos);
+                        });
+                        const typeE2 =
+                            finalD2.dbPos < Infinity
+                                ? nodes[finalP2[finalD2.dbPos - 1]]?.bondOrders[finalP2[finalD2.dbPos]] || 1
+                                : 1;
+                        const bStr2 = Object.keys(gr2)
+                            .sort()
+                            .map((n) => {
+                                const pL = gr2[n].sort((x, y) => x - y),
+                                    pfx = ["", "", "di", "tri", "tetra", "penta"][pL.length] || ""; //awalan di tri
+                                return pL.join(",") + "-" + pfx + n;
+                            })
+                            .join("-");
+                        const suffix = ["ana", "ena", "una"][typeE2 - 1];
+                        const dbPStr = typeE2 > 1 && finalD2.dbPos < Infinity ? finalD2.dbPos + "-" : "";
+                        let resNama2 = (bStr2 ? bStr2 + "-" : "") + dbPStr + preI2[longestPath.length] + suffix;
+                        resNama2 = resNama2.charAt(0).toUpperCase() + resNama2.slice(1);
+                        const pos2 = {};
+                        finalP2.forEach((nid, i) => {
+                            pos2[nid] = { x: i, y: 0 };
+                        });
+                        const bTrk = {};
+                        finalP2.forEach((nid, pi) => {
+                            nodes[nid].bonds.forEach((nbr) => {
+                                if (finalP2.includes(nbr)) return;
+                                bTrk[nid] = (bTrk[nid] || 0) + 1;
+                                const bc = bTrk[nid],
+                                    dy = bc === 1 ? 1 : bc === 2 ? -1 : 0,
+                                    dx = bc === 3 ? (pi === 0 ? -1 : 1) : 0;
+                                const bq = [nbr];
+                                const bv = new Set([...finalP2, nbr]);
+                                pos2[nbr] = { x: pos2[nid].x + (dx === 0 ? 0 : dx), y: pos2[nid].y + dy };
+                                while (bq.length) {
+                                    const cur = bq.shift();
+                                    nodes[cur].bonds.forEach((bn) => {
+                                        if (!bv.has(bn)) {
+                                            bv.add(bn);
+                                            pos2[bn] = {
+                                                x: pos2[cur].x + (dy !== 0 ? 1 : dx),
+                                                y: pos2[cur].y + (dy !== 0 ? dy : 0),
+                                            };
+                                            bq.push(bn);
+                                        }
+                                    });
+                                }
+                            });
+                        });
+                        const gap2 = 85,
+                            r2 = 26,
+                            oX2 = 120,
+                            oY2 = 220;
+                        nodes.forEach((n) => {
+                            const p = pos2[n.id] || { x: n.id, y: 0 },
+                                x = oX2 + p.x * gap2,
+                                y = oY2 + p.y * gap2;
+                            n.bonds.forEach((tid) => {
+                                if (tid < n.id) return;
+                                const tp = pos2[tid] || { x: tid, y: 0 },
+                                    tx = oX2 + tp.x * gap2,
+                                    ty = oY2 + tp.y * gap2,
+                                    ord = n.bondOrders[tid] || 1;
+                                ctx2.beginPath();
+                                ctx2.strokeStyle = "#2c3e50";
+                                ctx2.lineWidth = 2;
+                                if (ord === 1) {
+                                    ctx2.moveTo(x, y);
+                                    ctx2.lineTo(tx, ty);
+                                } else if (ord === 2) {
+                                    ctx2.moveTo(x, y - 4);
+                                    ctx2.lineTo(tx, ty - 4);
+                                    ctx2.moveTo(x, y + 4);
+                                    ctx2.lineTo(tx, ty + 4);
+                                } else {
+                                    ctx2.moveTo(x, y - 7);
+                                    ctx2.lineTo(tx, ty - 7);
+                                    ctx2.moveTo(x, y);
+                                    ctx2.lineTo(tx, ty);
+                                    ctx2.moveTo(x, y + 7);
+                                    ctx2.lineTo(tx, ty + 7);
+                                }
+                                ctx2.stroke();
+                            });
+                            ctx2.beginPath();
+                            ctx2.arc(x, y, r2, 0, Math.PI * 2);
+                            ctx2.fillStyle = finalP2.includes(n.id) ? "#27ae60" : "#f1c40f";
+                            ctx2.fill();
+                            ctx2.stroke();
+                            const usd = Object.values(n.bondOrders).reduce((a, b) => a + b, 0);
+                            ctx2.fillStyle = "white";
+                            ctx2.textAlign = "center";
+                            ctx2.font = "bold 14px Arial";
+                            ctx2.fillText("C" + (4 - usd > 0 ? "H" + (4 - usd > 1 ? 4 - usd : "") : ""), x, y + 5);
+                        });
+                        const bonds2 = hitungIkatan(nodes);
+                        return { text: resNama2, canvas: canvas2, bonds: bonds2 };
+                    } catch (e) {
+                        return { text: "Error Struktur: " + e, bonds: {} };
+                    }
+                }
+                const canvas = document.createElement("canvas");
+                canvas.width = 1000;
+                canvas.height = 800;
+                const ctx = canvas.getContext("2d");
+                try {
+                    let parts = kodeIntern.split("-"),
+                        cPart = parts.length > 1 ? parts[0] : "",
+                        uPart = parts.length > 1 ? parts[1] : parts[0];
+                    let nBrs = [];
+                    if (cPart) {
+                        cPart.split(/,(?![^\(]*\))/).forEach((g) => {
+                            if (g.includes("(")) {
+                                let [pRaw, len] = g.split("(");
+                                len = len.replace(")", "");
+                                pRaw.split(",").forEach((p, idx, a) =>
+                                    nBrs.push(`${p}(${idx === a.length - 1 ? len : 1})`)
+                                );
+                            } else g.split(",").forEach((p) => nBrs.push(`${p}(1)`));
+                        });
+                    }
+                    let nUtama = parseInt(uPart.split(/[=~|]/)[0]),
+                        typeE = 1,
+                        posF = 0;
+                    if (uPart.includes("=") || uPart.includes("~")) {
+                        typeE = uPart.includes("=") ? 2 : 3;
+                        posF = parseInt(uPart.split(/[=~]/)[1] || 0);
+                    }
+                    for (let i = 0; i < nUtama; i++) {
+                        nodes.push({ id: i, bonds: [], x: i, y: 0, bondOrders: {} });
+                        if (i > 0) {
+                            let order = i === posF ? typeE : 1;
+                            nodes[i].bonds.push(i - 1);
+                            nodes[i - 1].bonds.push(i);
+                            nodes[i].bondOrders[i - 1] = order;
+                            nodes[i - 1].bondOrders[i] = order;
+                        }
+                    }
+                    let bTrack = {};
+                    nBrs.forEach((br) => {
+                        let b = br.match(/(\d+)\((\d+)\)/),
+                            pIdx = parseInt(b[1]) - 1,
+                            len = parseInt(b[2]);
+                        bTrack[pIdx] = (bTrack[pIdx] || 0) + 1;
+                        let c = bTrack[pIdx],
+                            dx = 0,
+                            dy = c === 1 ? 1 : c === 2 ? -1 : 0;
+                        if (c === 3) dx = pIdx === 0 ? -1 : 1;
+                        let prev = pIdx;
+                        for (let j = 0; j < len; j++) {
+                            let nid = nodes.length;
+                            nodes.push({
+                                id: nid,
+                                bonds: [prev],
+                                x: nodes[pIdx].x + dx * (j + 1),
+                                y: nodes[pIdx].y + dy * (j + 1),
+                                bondOrders: { [prev]: 1 },
+                            });
+                            nodes[prev].bonds.push(nid);
+                            nodes[prev].bondOrders[nid] = 1;
+                            prev = nid;
+                        }
+                    });
+                    const findL = (curr, v) => {
+                        v.add(curr);
+                        let path = [curr];
+                        for (let nbr of nodes[curr].bonds) {
+                            if (!v.has(nbr)) {
+                                let sp = findL(nbr, new Set(v));
+                                if (sp.length + 1 > path.length) path = [curr, ...sp];
+                            }
+                        }
+                        return path;
+                    };
+                    nodes.forEach((_, i) => {
+                        if (nodes[i].bonds.length === 1) {
+                            let p = findL(i, new Set());
+                            if (p.length > longestPath.length) longestPath = p;
+                        }
+                    });
+                    const analyze = (path) => {
+                        let brs = [],
+                            dbP = Infinity;
+                        for (let i = 0; i < path.length - 1; i++) {
+                            if (nodes[path[i]].bondOrders[path[i + 1]] > 1) dbP = Math.min(dbP, i + 1);
+                            nodes[path[i]].bonds.forEach((nbr) => {
+                                if (!path.includes(nbr)) {
+                                    let sz = 0,
+                                        st = [nbr],
+                                        vS = new Set(path);
+                                    while (st.length > 0) {
+                                        let c = st.pop();
+                                        vS.add(c);
+                                        sz++;
+                                        nodes[c].bonds.forEach((bn) => {
+                                            if (!vS.has(bn)) st.push(bn);
+                                        });
+                                    }
+                                    brs.push({ pos: i + 1, len: sz });
+                                }
+                            });
+                        }
+                        return { dbPos: dbP, brs: brs.sort((a, b) => a.pos - b.pos) };
+                    };
+                    let f = analyze(longestPath),
+                        b = analyze([...longestPath].reverse()),
+                        finalD,
+                        finalP;
+                    if (f.dbPos !== b.dbPos) {
+                        finalD = f.dbPos < b.dbPos ? f : b;
+                        finalP = f.dbPos < b.dbPos ? longestPath : [...longestPath].reverse();
+                    } else {
+                        let fS = JSON.stringify(f.brs.map((x) => x.pos)),
+                            bS = JSON.stringify(b.brs.map((x) => x.pos));
+                        finalD = fS <= bS ? f : b;
+                        finalP = fS <= bS ? longestPath : [...longestPath].reverse();
+                    }
+                    let preI = ["", "met", "et", "prop", "but", "pent", "heks", "hept", "okt", "non", "dek"];
+                    let gr = {};
+                    finalD.brs.forEach((d) => {
+                        let n = preI[d.len] + "il";
+                        gr[n] = gr[n] || [];
+                        gr[n].push(d.pos);
+                    });
+                    let bStr = Object.keys(gr)
+                        .sort()
+                        .map((n) => {
+                            let pL = gr[n].sort((x, y) => x - y),
+                                pfx = ["", "", "di", "tri", "tetra", "penta"][pL.length] || "";
+                            return pL.join(",") + "-" + pfx + n;
+                        })
+                        .join("-");
+                    let resNama =
+                        (bStr ? bStr + "-" : "") +
+                        (typeE > 1 ? finalD.dbPos + "-" : "") +
+                        preI[longestPath.length] +
+                        ["ana", "ena", "una"][typeE - 1];
+                    const gap = 85,
+                        r = 26,
+                        oX = 120,
+                        oY = 220;
+                    nodes.forEach((n) => {
+                        let x = oX + n.x * gap,
+                            y = oY + n.y * gap;
+                        n.bonds.forEach((tId) => {
+                            if (tId < n.id) return;
+                            let t = nodes[tId],
+                                tx = oX + t.x * gap,
+                                ty = oY + t.y * gap,
+                                ord = n.bondOrders[tId] || 1;
+                            ctx.beginPath();
+                            ctx.strokeStyle = "#2c3e50";
+                            ctx.lineWidth = 2;
+                            if (ord === 1) {
+                                ctx.moveTo(x, y);
+                                ctx.lineTo(tx, ty);
+                            } else if (ord === 2) {
+                                ctx.moveTo(x, y - 4);
+                                ctx.lineTo(tx, ty - 4);
+                                ctx.moveTo(x, y + 4);
+                                ctx.lineTo(tx, ty + 4);
+                            } else {
+                                ctx.moveTo(x, y - 7);
+                                ctx.lineTo(tx, ty - 7);
+                                ctx.moveTo(x, y);
+                                ctx.lineTo(tx, ty);
+                                ctx.moveTo(x, y + 7);
+                                ctx.lineTo(tx, ty + 7);
+                            }
+                            ctx.stroke();
+                        });
+                        ctx.beginPath();
+                        ctx.arc(x, y, r, 0, Math.PI * 2);
+                        ctx.fillStyle = finalP.includes(n.id) ? "#27ae60" : "#f1c40f";
+                        ctx.fill();
+                        ctx.stroke();
+                        let usd = 0;
+                        n.bonds.forEach((tid) => (usd += n.bondOrders[tid] || 1));
+                        ctx.fillStyle = "white";
+                        ctx.textAlign = "center";
+                        ctx.font = "bold 14px Arial";
+                        ctx.fillText("C" + (4 - usd > 0 ? "H" + (4 - usd > 1 ? 4 - usd : "") : ""), x, y + 5);
+                    });
+                    const bonds = hitungIkatan(nodes);
+                    return { text: resNama, canvas, bonds };
+                } catch (e) {
+                    return { text: "Error: " + e.message, canvas: null, bonds: {} };
+                }
+            };
+            const prosesan2 = (input) => {
+                if (!document.getElementById("res")) {
+                    const res = document.createElement("div");
+                    res.id = "res";
+                    res.style.marginTop = "20px";
+                    const cvW = document.createElement("div");
+                    cvW.id = "canvasWrap";
+                    cvW.style.cssText = "margin-top:20px;text-align:center;";
+                    res.appendChild(cvW);
+                    document.body.appendChild(res);
+                }
+// tabel perodik berisi simbol, nama, dan massa jenis
+                const db = {
+                    H: ["Hidrogen", 1],
+                    He: ["Helium", 4],
+                    Li: ["Litium", 7],
+                    Be: ["Berilium", 9],
+                    B: ["Boron", 11],
+                    C: ["Karbon", 12],
+                    N: ["Nitrogen", 14],
+                    O: ["Oksigen", 16],
+                    F: ["Fluor", 19],
+                    Ne: ["Neon", 20],
+                    Na: ["Natrium", 23],
+                    Mg: ["Magnesium", 24],
+                    Al: ["Aluminium", 27],
+                    Si: ["Silikon", 28],
+                    P: ["Fosfor", 31],
+                    S: ["Sulfur", 32],
+                    Cl: ["Klorin", 35.5],
+                    Ar: ["Argon", 40],
+                    K: ["Kalium", 39],
+                    Ca: ["Kalsium", 40],
+                    Sc: ["Skandium", 45],
+                    Ti: ["Titanium", 48],
+                    V: ["Vanadium", 51],
+                    Cr: ["Kromium", 52],
+                    Mn: ["Mangan", 55],
+                    Fe: ["Besi", 56],
+                    Co: ["Kobalt", 59],
+                    Ni: ["Nikel", 59],
+                    Cu: ["Tembaga", 63.5],
+                    Zn: ["Seng", 65],
+                    Ga: ["Galium", 70],
+                    Ge: ["Germanium", 73],
+                    As: ["Arsenik", 75],
+                    Se: ["Selen", 79],
+                    Br: ["Bromin", 80],
+                    Kr: ["Kripton", 84],
+                    Rb: ["Rubidium", 85],
+                    Sr: ["Stronsium", 88],
+                    Y: ["Itrium", 89],
+                    Zr: ["Zirkonium", 91],
+                    Nb: ["Niobium", 93],
+                    Mo: ["Molibden", 96],
+                    Tc: ["Teknesium", 98],
+                    Ru: ["Rutenium", 101],
+                    Rh: ["Rodium", 103],
+                    Pd: ["Paladium", 106],
+                    Ag: ["Perak", 108],
+                    Cd: ["Kadmium", 112],
+                    In: ["Indium", 115],
+                    Sn: ["Timah", 119],
+                    Sb: ["Antimon", 122],
+                    Te: ["Telurium", 128],
+                    I: ["Iodin", 127],
+                    Xe: ["Xenon", 131],
+                    Cs: ["Sesium", 133],
+                    Ba: ["Barium", 137],
+                    La: ["Lantanum", 139],
+                    Ce: ["Serium", 140],
+                    Pr: ["Praseodimium", 141],
+                    Nd: ["Neodimium", 144],
+                    Pm: ["Prometium", 145],
+                    Sm: ["Samarium", 150],
+                    Eu: ["Europium", 152],
+                    Gd: ["Gadolinium", 157],
+                    Tb: ["Terbium", 159],
+                    Dy: ["Disprosium", 162],
+                    Ho: ["Holmium", 165],
+                    Er: ["Erbium", 167],
+                    Tm: ["Tulium", 169],
+                    Yb: ["Iterbium", 173],
+                    Lu: ["Lutesium", 175],
+                    Hf: ["Hafnium", 178],
+                    Ta: ["Tantalum", 181],
+                    W: ["Wolfram", 184],
+                    Re: ["Renium", 186],
+                    Os: ["Osmium", 190],
+                    Ir: ["Iridium", 192],
+                    Pt: ["Platina", 195],
+                    Au: ["Emas", 197],
+                    Hg: ["Raksa", 201],
+                    Tl: ["Talium", 204],
+                    Pb: ["Timbal", 207],
+                    Bi: ["Bismut", 209],
+                    Po: ["Polonium", 209],
+                    At: ["Astatin", 210],
+                    Rn: ["Radon", 222],
+                    Fr: ["Fransium", 223],
+                    Ra: ["Radium", 226],
+                    Ac: ["Aktinium", 227],
+                    Th: ["Torium", 232],
+                    Pa: ["Protaktinium", 231],
+                    U: ["Uranium", 238],
+                    Np: ["Neptunium", 237],
+                    Pu: ["Plutonium", 244],
+                    Am: ["Amerisium", 243],
+                    Cm: ["Kurium", 247],
+                    Bk: ["Berkelium", 247],
+                    Cf: ["Kalifornium", 251],
+                    Es: ["Einsteinium", 252],
+                    Fm: ["Fermium", 257],
+                    Md: ["Mendelevium", 258],
+                    No: ["Nobelium", 259],
+                    Lr: ["Lawrensium", 262],
+                    Rf: ["Rutherfordium", 267],
+                    Db: ["Dubnium", 270],
+                    Sg: ["Seaborgium", 271],
+                    Bh: ["Bohrium", 270],
+                    Hs: ["Hassium", 277],
+                    Mt: ["Meitnerium", 276],
+                    Ds: ["Darmstadtium", 281],
+                    Rg: ["Roentgenium", 280],
+                    Cn: ["Kopernisium", 285],
+                    Nh: ["Nihonium", 284],
+                    Fl: ["Flerovium", 289],
+                    Mc: ["Moskovium", 288],
+                    Lv: ["Livermorium", 293],
+                    Ts: ["Tennessin", 294],
+                    Og: ["Oganesson", 294],
+                };
+               
+                const prosesNama = (input) => {
+                    if (db[input]) return input;
+                    let nama = input.toLowerCase().trim();
+                    const prefiks = { mono: 1, di: 2, tri: 3, tetra: 4, penta: 5, heksa: 6 };
+                    const romawi = { i: 1, ii: 2, iii: 3, iv: 4, v: 5 };
+                    const getSimbol = (n) => {
+                        let clean = n.replace(/ida$/, "").replace(/at$/, "").replace(/it$/, "");
+                        if (clean === "hidroks") return "OH";
+                        if (clean === "oks") return "O";
+                        for (let s in db) {
+                            if (db[s][0].toLowerCase().startsWith(clean)) return s;
+                        }
+                        return null;
+                    };
+                    const getValensi = (s) => {
+                        if (s === "OH") return -1;
+                        if (s === "H") return 1;
+                        let n = Object.keys(db).indexOf(s) + 1;
+                        const kulit = [2, 8, 8, 18, 18, 32];
+                        let sisa = n;
+                        for (let k of kulit) {
+                            if (sisa <= k) break;
+                            sisa -= k;
+                        }
+                        return sisa <= 4 ? sisa : sisa - 8;
+                    };
+                    for (let p in prefiks) {
+                        if (nama.includes(p) && !nama.includes("asam") && !nama.includes("(")) {
+                            let parts = nama.split(p);
+                            let k = getSimbol(parts[0].trim()) || "";
+                            let a = getSimbol(parts[1].trim());
+                            if (a) return k + a + (prefiks[p] > 1 ? prefiks[p] : "");
+                        }
+                    }
+                    let biloksManual = null;
+                    let matchRomawi = nama.match(/\((v|iv|iii|ii|i)\)/);
+                    if (matchRomawi) {
+                        biloksManual = romawi[matchRomawi[1]];
+                        nama = nama.replace(matchRomawi[0], "").trim();
+                    }
+                    let kation, anion, namaAnion;
+                    if (nama.startsWith("asam ")) {
+                        kation = "H";
+                        namaAnion = nama.replace("asam ", "");
+                        anion = getSimbol(namaAnion);
+                    } else {
+                        let parts = nama.split(/\s+/);
+                        kation = getSimbol(parts[0]);
+                        namaAnion = parts[parts.length - 1];
+                        anion = getSimbol(namaAnion);
+                    }
+                    if (!kation || !anion) return input;
+                    let simbolAnion = anion;
+                    let muatanAnion = Math.abs(getValensi(anion));
+                    let muatanKation = biloksManual || Math.abs(getValensi(kation));
+                    if (namaAnion === "nitrat") {
+                        simbolAnion = "NO3";
+                        muatanAnion = 1;
+                    } else if (namaAnion === "nitrit") {
+                        simbolAnion = "NO2";
+                        muatanAnion = 1;
+                    } else if (namaAnion === "fosfat") {
+                        simbolAnion = "PO4";
+                        muatanAnion = 3;
+                    } else if (namaAnion.endsWith("at")) {
+                        simbolAnion = anion + "O4";
+                        muatanAnion = 2;
+                    } else if (namaAnion.endsWith("it")) {
+                        simbolAnion = anion + "O3";
+                        muatanAnion = 2;
+                    } else if (anion === "C" && muatanKation <= 2) {
+                        simbolAnion = "C2";
+                        muatanAnion = 2;
+                    }
+                    const fpb = (a, b) => (b === 0 ? a : fpb(b, a % b));
+                    let nK = muatanAnion,
+                        nA = muatanKation;
+                    let d = fpb(nK, nA);
+                    nK /= d;
+                    nA /= d;
+                    let resK = kation + (nK > 1 ? nK : "");
+                    let resA =
+                        nA > 1 && simbolAnion.length > 2 ? `(${simbolAnion})${nA}` : simbolAnion + (nA > 1 ? nA : "");
+                    return resK + resA;
+                };
+                input = prosesNama(input);
+                input =
+                    input.split(" ").length === 1
+                        ? input === input.slice(0, input.length / 2).repeat(2)
+                            ? input.slice(0, input.length / 2)
+                            : input
+                        : input;
+                const syms = Object.keys(db);
+                const getSData = (s) => {
+                    let z = syms.indexOf(s) + 1;
+                    if (z < 1) return null;
+                    let gm = [0, 2, 10, 18, 36, 54, 86, 118],
+                        p = gm.findIndex((m) => z <= m);
+                    let sisa = z - gm[p - 1],
+                        jenis = [1, 5, 6, 7, 8, 9, 14, 15, 16, 17, 33, 34, 35, 52, 53, 85].includes(z)
+                            ? "Non-Logam"
+                            : gm.includes(z)
+                              ? "Gas Mulia"
+                              : "Logam";
+                    let n = sisa > 12 ? sisa - 10 : sisa > 2 && p > 3 ? sisa - 10 : sisa;
+                    let gol =
+                        ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII"][Math.max(1, Math.min(n, 8))] +
+                        (sisa > 2 && sisa <= 12 && p > 3 ? " B" : " A");
+                    if (z == 2) gol = "VIII A";
+                    let ev = z <= 2 ? z : sisa > 10 ? sisa - 10 : sisa;
+                    return { z, nama: db[s][0], ar: db[s][1], periode: p, gol, jenis, ev };
+                };
+                let teks = input.replace(/([a-zA-Z0-9])([+-])$/, "$1,$2") || input;
+                if (input.includes(",")) {
+                    teks = input;
+                }
+                if (input.includes("^")) {
+                    teks = input.replace("^", ",");
+                }
+                let parts = teks.split(","),
+                    rumusHanya = parts[0].trim(),
+                    muatanInput = 0;
+                if (parts[1]) {
+                    let m = parts[1].replace(/\s+/g, "");
+                    muatanInput = m.includes("-")
+                        ? -parseInt(m.replace("-", "") || 1)
+                        : parseInt(m.replace("+", "") || 1);
+                }
+                let atoms = [],
+                    totalMr = 0,
+                    totalAt = 0,
+                    reg = /([A-Z][a-z]*)(\d*)/g,
+                    match;
+                while ((match = reg.exec(rumusHanya))) {
+                    let d = getSData(match[1]);
+                    if (d) {
+                        let c = parseInt(match[2]) || 1;
+                        atoms.push({ ...d, s: match[1], c });
+                        totalMr += d.ar * c;
+                        totalAt += c;
+                    }
+                }
+                if (atoms.length < 1) return { nama: "", visual: null, _bonds: {}, _atoms: [] };
+                let iPv = atoms.findIndex((a) => a.s !== "H");
+                if (iPv === -1) iPv = 0;
+                let pusatV = atoms[iPv],
+                    pei = 0,
+                    eB = 0;
+                atoms.forEach((at, i) => {
+                    if (i !== iPv) {
+                        pei += at.c;
+                        eB += at.c * (["O", "S"].includes(at.s) ? 2 : 1);
+                    }
+                });
+                let peb = Math.max(0, (pusatV.ev - muatanInput - eB) / 2);
+                let axe = "AX" + pei + (peb > 0 ? "E" + peb : "");
+                let isL = atoms.some((a) => a.jenis === "Logam"),
+                    muatan = muatanInput;
+                let idxP = atoms.findIndex(
+                    (a) => a.s !== "H" && a.s !== "O" && !((a.gol === "I A" || a.gol === "II A") && atoms.length > 2)
+                );
+                if (idxP === -1) idxP = atoms.findIndex((a) => a.s !== "H" && a.s !== "O");
+                if (idxP === -1) idxP = 0;
+                let biloks = new Array(atoms.length).fill(0);
+                if (input === "CaC2") {
+                    atoms.forEach((at, i) => {
+                        if (at.s === "Ca") biloks[i] = 2;
+                        if (at.s === "C") biloks[i] = -1;
+                    });
+                } else {
+                    atoms.forEach((at, i) => {
+                        if (i === idxP) return;
+                        if (at.s === "F") biloks[i] = -1;
+                        else if (at.s === "O") biloks[i] = -2;
+                        else if (at.s === "H") biloks[i] = 1;
+                        else if (at.gol.includes("A")) {
+                            const romawi = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8 };
+                            let gStr = at.gol.split(" ")[0];
+                            let g = romawi[gStr] || 0;
+                            biloks[i] = g > 4 ? g - 8 : g;
+                        }
+                    });
+                }
+                let tL = 0;
+                atoms.forEach((at, i) => {
+                    if (i !== idxP) tL += biloks[i] * at.c;
+                });
+                let bHitung = (muatanInput - tL) / atoms[idxP].c;
+                if (!parts[1] && bHitung > atoms[idxP].ev) {
+                    biloks[idxP] = atoms[idxP].ev;
+                    muatan = biloks[idxP] * atoms[idxP].c + tL;
+                } else {
+                    biloks[idxP] = bHitung;
+                    muatan = muatanInput;
+                }
+                const potong = (n) => n.substring(0, /[AEOU]/.test(n.charAt(4)) ? 4 : 5);
+                const pref = ["", "", "DI", "TRI", "TETRA", "PENTA", "HEKSA"],
+                    rom = ["", "(I)", "(II)", "(III)", "(IV)", "(V)", "(VI)", "(VII)"];
+                let namaF = "";
+                let lO = atoms.find((a) => a.s === "O");
+                if (lO && (atoms.length > 2 || muatan !== 0)) {
+                    let pN = atoms.length > 2 ? atoms.find((a, i) => i > 0 && a.s !== "O") || atoms[0] : atoms[0];
+                    let akh;
+                    if (pN.s === "H" && lO) {
+                        akh = "OKSIDA";
+                    } else {
+                        akh = lO.c >= 4 || (lO.c === 3 && ["C", "N"].includes(pN.s)) ? "AT" : "IT";
+                    }
+                    if (atoms.length > 2) {
+                        namaF =
+                            (atoms[0].s === "H"
+                                ? "ASAM "
+                                : atoms[0].nama.toUpperCase() +
+                                  (isL && (atoms[0].gol.includes("B") || ["Fe", "Cu", "Sn", "Pb"].includes(atoms[0].s))
+                                      ? rom[Math.abs(Math.round(biloks[0]))]
+                                      : "") +
+                                  " ") +
+                            potong(pN.nama.toUpperCase()) +
+                            akh;
+                    } else {
+                        namaF = "ION " + potong(pN.nama.toUpperCase()) + akh;
+                    }
+                } else {
+                    let n1 = atoms[0].nama.toUpperCase();
+                    if (isL) {
+                        if (atoms[0].gol.includes("B") || ["Fe", "Cu", "Sn", "Pb"].includes(atoms[0].s))
+                            n1 += rom[Math.abs(Math.round(biloks[0]))];
+                    } else if (atoms[0].c > 1) n1 = (pref[atoms[0].c] || "") + n1;
+                    let n2 = "";
+                    if (atoms[1]) {
+                        let prefik2 =
+                            isL || (atoms[0].s === "H" && atoms[1].s !== "O")
+                                ? ""
+                                : atoms[1].c === 1
+                                  ? "MONO"
+                                  : pref[atoms[1].c] || "";
+                        n2 = prefik2 + potong(atoms[1].nama.toUpperCase()) + "IDA";
+                    }
+                    namaF = n1 + " " + n2;
+                }
+                
+                const wrap = document.getElementById("canvasWrap");
+                wrap.innerHTML = "";
+                const cvs = document.createElement("canvas");
+                cvs.width = 400;
+                cvs.height = 300;
+                cvs.style.background = "#fff";
+                cvs.style.maxWidth = "100%";
+                const ctx = cvs.getContext("2d"),
+                    cx = 200,
+                    cy = 150;
+                const drawA = (x, y, t, col, r) => {
+                    ctx.beginPath();
+                    ctx.arc(x, y, r, 0, 7);
+                    ctx.fillStyle = col;
+                    ctx.fill();
+                    ctx.strokeStyle = "#333";
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.fillStyle = "#fff";
+                    ctx.font = "bold 13px Arial";
+                    ctx.textAlign = "center";
+                    ctx.fillText(t, x, y + 5);
+                };
+                const drawL = (x1, y1, x2, y2, ord, isK = false) => {
+                    const d = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2),
+                        dx = (x2 - x1) / d,
+                        dy = (y2 - y1) / d,
+                        ox = -dy * 4,
+                        oy = dx * 4;
+                    ctx.strokeStyle = isK ? "#e67e22" : "#333";
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash(isK ? [5, 3] : []);
+                    if (ord == 1) {
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                    } else if (ord == 2) {
+                        ctx.beginPath();
+                        ctx.moveTo(x1 + ox, y1 + oy);
+                        ctx.lineTo(x2 + ox, y2 + oy);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(x1 - ox, y1 - oy);
+                        ctx.lineTo(x2 - ox, y2 - oy);
+                        ctx.stroke();
+                    } else {
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(x1 + ox * 1.4, y1 + oy * 1.4);
+                        ctx.lineTo(x2 + ox * 1.4, y2 + oy * 1.4);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(x1 - ox * 1.4, y1 - oy * 1.4);
+                        ctx.lineTo(x2 - ox * 1.4, y2 - oy * 1.4);
+                        ctx.stroke();
+                    }
+                    ctx.setLineDash([]);
+                };
+                const pst = typeof pusatV !== "undefined" ? pusatV : pusat;
+                const balikbilok = (v) =>
+                    v === 0 ? "0" : (Math.abs(v) === 1 ? "" : Math.abs(v)) + (v > 0 ? "+" : "-");
+                if (isL && (atoms.length !== 1 || atoms[0].c !== 1)) {
+                    drawL(cx - 60, cy, cx + 60, cy, 1);
+                    drawA(cx - 60, cy, atoms[0].s + " " + balikbilok(Math.round(biloks[0])), "#3498db", 35);
+                    drawA(
+                        cx + 60,
+                        cy,
+                        atoms[2]
+                            ? atoms[1].s + atoms[2].s + " " + balikbilok(Math.round(biloks[1] + biloks[2]))
+                            : atoms[1]
+                              ? atoms[1].s + " " + balikbilok(Math.round(biloks[1]))
+                              : atoms[0].s + " " + balikbilok(Math.round(biloks[0])),
+                        "#e74c3c",
+                        40
+                    );
+                } else {
+                    let crds = [];
+                    if (axe == "AX2")
+                        crds = [
+                            [-90, 0],
+                            [90, 0],
+                        ];
+                    else if (axe == "AX3" || axe == "AX2E")
+                        crds = [
+                            [0, -90],
+                            [-80, 50],
+                            [80, 50],
+                        ];
+                    else if (axe == "AX4" || axe == "AX3E" || axe == "AX2E2")
+                        crds = [
+                            [0, -90],
+                            [-80, 40],
+                            [80, 40],
+                            [0, 60],
+                        ];
+                    else {
+                        let pTotal = pei || 1;
+                        for (let i = 0; i < pTotal; i++) {
+                            let ang = (i * 2 * Math.PI) / pTotal - Math.PI / 2;
+                            crds.push([Math.cos(ang) * 90, Math.sin(ang) * 90]);
+                        }
+                    }
+                    let lIdx = 0,
+                        evSisa = pst.ev;
+                    atoms.forEach((at) => {
+                        let loopJml = atoms.length === 1 ? at.c - 1 : at.s === pst.s ? 0 : at.c;
+                        for (let i = 0; i < loopJml; i++) {
+                            if (!crds[lIdx]) break;
+                            let ord = 1;
+                            if (at.s == "N" && pst.s == "N") ord = 3;
+                            else if (["O", "S"].includes(at.s)) ord = 2;
+                            let isK = evSisa < ord && !isL;
+                            drawL(cx, cy, cx + crds[lIdx][0], cy + crds[lIdx][1], ord, isK);
+                            drawA(cx + crds[lIdx][0], cy + crds[lIdx][1], at.s, "#27ae60", 22);
+                            if (!isK) evSisa -= ord;
+                            lIdx++;
+                        }
+                    });
+                    drawA(cx, cy, pst.s, "#2c3e50", 30);
+                }
+                return {
+                    rumus: rumusHanya,
+                    nama:
+                        rumusHanya === "CH4"
+                            ? "Metana"
+                            : namaF.replace(/OO/g, "O").replace(/IID/g, "ID").replace(/IGI/g, "I").trim(),
+                    mr: totalMr,
+                    visual: cvs,
+                    _bonds: hitungIkatan(atoms),
+                    _atoms: atoms,
+                };
+            };
+const hitungIkatan = (sumber) => {
+
+                const bc = {};
+                const add = (key, n = 1) => {
+                    bc[key] = (bc[key] || 0) + n;
+                };
+                const garis = (ord) => (ord === 1 ? "-" : ord === 2 ? "=" : "#");
+                const kunci = (a, b, ord) => {
+                    const [L, R] = a <= b ? [a, b] : [b, a];
+                    return `${L}${garis(ord)}${R}`;
+                };
+                if (Array.isArray(sumber) && sumber.length > 0 && "bondOrders" in sumber[0]) {
+                    sumber.forEach((node) => {
+                        node.bonds.forEach((tid) => {
+                            if (tid <= node.id) return;
+                            const ord = node.bondOrders[tid] || 1;
+                            add(`C${garis(ord)}C`);
+                        });
+                        const terpakai = Object.values(node.bondOrders).reduce((a, b) => a + b, 0);
+                        const hSisa = Math.max(0, 4 - terpakai);
+                        if (hSisa > 0) add("C-H", hSisa);
+                    });
+                    return bc;
+                }
+                if (Array.isArray(sumber) && sumber.length > 0 && "ev" in sumber[0]) {
+                    if (sumber.length === 0) return bc;
+                    let iPusat = sumber.findIndex((a) => a.s !== "H" && a.jenis !== "Gas Mulia" && a.jenis !== "Logam");
+                    if (iPusat === -1) iPusat = sumber.findIndex((a) => a.s !== "H" && a.jenis !== "Gas Mulia");
+                    if (iPusat === -1) iPusat = 0;
+                    const pusat = sumber[iPusat];
+                    const isLogam = pusat.jenis === "Logam";
+                    sumber.forEach((at, i) => {
+                        if (i === iPusat) return;
+                        let ord = 1;
+                        if (!isLogam) {
+                            const p = pusat.s,
+                                l = at.s;
+                            if (l === "N" && p === "N") ord = 3;
+                            else if (l === "O" && p === "O") ord = 2;
+                            else if (l === "C" && p === "C") ord = 3;
+//penentuan pusat senyawa nomlogam diatomik heteronuklear
+                            else if (["O", "S"].includes(l) && !["H", "F", "Cl", "Br", "I"].includes(p)) ord = 2;
+//Hidrogen dan Halogen bukan pusat
+                        }
+                        add(kunci(pusat.s, at.s, ord), at.c);
+                    });
+                    return bc;
+                }
+                if (sumber && typeof sumber === "object" && "n" in sumber) {
+                    const { n, typeE = 1, posF = 1, branches = [], halo = null, haloCount = 1 } = sumber;
+                    for (let i = 0; i < n - 1; i++) {
+                        const ord = i + 1 === posF && typeE > 1 ? typeE : 1;
+                        add(`C${garis(ord)}C`);
+                    }
+                    branches.forEach((b) => {
+                        for (let j = 0; j < b.size; j++) add("C-C");
+                    });
+                    const totalC = n + branches.reduce((a, b) => a + b.size, 0);
+                    const baseH = 2 * totalC + 2 - (typeE - 1) * 2;
+                    const haloH = halo && halo !== "OH" ? haloCount : 0;
+                    add("C-H", Math.max(0, baseH - haloH));
+                    if (halo === "OH") {
+/*OH sebenarnya bukan Halo
+sebenarnya untuk imbuhan di senyawa organik  saja */
+                        add("C-O");
+                        add("H-O");
+                    } else if (halo === "F") add("C-F", haloCount);
+                    else if (halo === "CL") add("C-Cl", haloCount);
+                    else if (halo === "BR") add("C-Br", haloCount);
+                    else if (halo === "I") add("C-I", haloCount);
+                    return bc;
+                }
+            };
+            if (skip) return prosesan2(input);
+            return prosesBesar(input);
+        }
+    </script>
